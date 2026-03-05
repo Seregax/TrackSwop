@@ -1,5 +1,5 @@
 from dataclasses import dataclass
-from typing import List
+from typing import List, Optional
 
 from src.model.entities.track import Track
 
@@ -7,4 +7,4 @@ from src.model.entities.track import Track
 @dataclass
 class Playlist:
     name: str
-    tracks: List[Track]
+    tracks: Optional[List[Track]]
