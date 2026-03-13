@@ -1,6 +1,6 @@
-from service_field import Field, FieldType
-from view_model import ViewModel
 from typing import List, Any
+from src.model.specifications.base import Field, FieldType
+from view_model import ViewModel
 
 
 class DynamicForm:

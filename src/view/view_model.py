@@ -1,8 +1,6 @@
 from typing import Any, Dict
 
-
 class ViewModel:
-
     def __init__(self):
         self.values: Dict[str, Any] = {}
 
