@@ -1,17 +1,9 @@
 from pathlib import Path
 from typing import List, Optional
 from mutagen import File as MutagenFile
-
 from dataclasses import dataclass
-from typing import List, Optional
 
-@dataclass
-class Track:
-    title: str
-    artists: List[str]
-    album: Optional[str]
-    year: Optional[int]
-    duration: Optional[float]
+from model.entities.track import Track
 
 
 class LocalDirectoryParser:
@@ -110,14 +102,3 @@ class LocalDirectoryParser:
             return int(str(year)[:4])
         except ValueError:
             return None
-
-"""TEST"""
-if __name__ == "__main__":
-
-
-    parser = LocalDirectoryParser()
-
-    music_folder = Path("music")
-    tracks = parser.parse_directory(music_folder)
-    for track in tracks:
-        print(track)
