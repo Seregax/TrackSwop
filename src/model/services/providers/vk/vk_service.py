@@ -343,70 +343,22 @@ class VkService(IStreamingService):
 
 
 """TEST"""
-import json
-
-def import_playlist(service: VkService, playlist_id: str, owner_id: int = None):
-    """
-    Импортирует плейлист из ВК.
-    
-    Args:
-        service: Экземпляр VkService
-        playlist_id: ID плейлиста для импорта
-        owner_id: ID владельца (опционально)
-    
-    Returns:
-        Playlist: Импортированный плейлист с треками
-    """
-    # 1. Создаём объект плейлиста с metadata
-    playlist = Playlist(
-        name=f"Imported Playlist {playlist_id}",
-        tracks=None,
-        id=playlist_id,
-        metadata={
-            "vk_playlist_id": int(playlist_id),
-            "owner_id": owner_id or service.user_id
-        }
-    )
-    
-    # 2. Загружаем треки
-    print(f" Загрузка треков из плейлиста {playlist_id}...")
-    tracks = service.get_tracks_from_playlist(playlist)
-    playlist.tracks = tracks
-    
-    # 3. Сохраняем информацию в файл
-    playlist_data = {
-        "name": playlist.name,
-        "id": playlist.id,
-        "track_count": len(tracks),
-        "tracks": [
-            {
-                "title": t.title,
-                "artists": t.artists,
-                "duration": t.duration
-            }
-            for t in tracks
-        ]
-    }
-    
-    with open(f"playlist_{playlist_id}.json", "w", encoding="utf-8") as f:
-        json.dump(playlist_data, f, ensure_ascii=False, indent=2)
-    
-    print(f" Импортировано {len(tracks)} треков")
-    print(f" Данные сохранены в playlist_{playlist_id}.json")
-    
-    return playlist
-
 def main():
     service = VkService()
-    service.set_auth_data(
-        token="access token",
-        user_id=1234567890
-    )
+
+    service.set_auth_data("vk1.a.ur_access_token", id=123456789)
+
     service.authenticate()
-    
-    # Импортируем плейлист по ID
-    playlist_id = input("Введите ID плейлиста для импорта: ")
-    import_playlist(service, playlist_id)
+
+    playlists = service.get_playlists()
+
+    print(f"Найдено плейлистов: {len(playlists)}")
+
+    for playlist in playlists:
+        print(f"- {playlist.name} (ID: {playlist.id}, треков: {playlist.track_count})")
+
+    print('done')
+
 
 
 if __name__ == "__main__":
