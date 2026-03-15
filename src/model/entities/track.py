@@ -1,11 +1,14 @@
-from dataclasses import dataclass
-from typing import List, Optional
+
+from dataclasses import dataclass, field
+from typing import List, Optional, Dict, Any
 
 
 @dataclass
 class Track:
     title: str
     artists: List[str]
-    album: Optional[str]
-    year: Optional[int]
-    duration: Optional[float]
+    album: Optional[str] = None
+    year: Optional[int] = None
+    duration: Optional[float] = None
+    id: Optional[str] = None
+    metadata: Dict[str, Any] = field(default_factory=dict)
