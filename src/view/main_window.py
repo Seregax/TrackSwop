@@ -11,11 +11,14 @@ from PySide6.QtWidgets import (
     QGroupBox,
     QSplitter,
     QTabWidget,
+    QStackedWidget,
 )
 
 from src.common.logger import get_logger
 from src.view.playlist_widget import PlaylistWidget
+from src.view.transfer_widget import TransferWidget
 from src.view.view_models.playlist_vm import PlaylistViewModel
+from src.view.view_models.transfer_vm import TransferViewModel
 
 logger = get_logger(__name__)
 
@@ -33,6 +36,7 @@ class MainWindow(QMainWindow):
         self.setMinimumSize(1000, 700)
         self._source_vm: Optional[PlaylistViewModel] = None
         self._dest_vm: Optional[PlaylistViewModel] = None
+        self._transfer_vm: Optional[TransferViewModel] = None
         self._setup_ui()
 
     def _setup_ui(self):
@@ -88,13 +92,20 @@ class MainWindow(QMainWindow):
         left_layout.addWidget(self.transfer_btn)
         left_layout.addStretch()
 
-        # Right panel - PlaylistWidget tabs
+        # Right panel - PlaylistWidget and TransferWidget
         right_panel = QWidget()
         right_layout = QVBoxLayout(right_panel)
         right_layout.setContentsMargins(0, 0, 0, 0)
         splitter.addWidget(right_panel)
 
-        # Tabs for source and destination playlists
+        # Stacked widget for switching between playlists and transfer
+        self.content_stack = QStackedWidget()
+
+        # Playlist tabs widget
+        playlist_tabs_widget = QWidget()
+        playlist_tabs_layout = QVBoxLayout(playlist_tabs_widget)
+        playlist_tabs_layout.setContentsMargins(0, 0, 0, 0)
+
         self.tabs = QTabWidget()
 
         # Source playlist widget
@@ -109,7 +120,17 @@ class MainWindow(QMainWindow):
         self.dest_playlist_widget.set_view_model(self._dest_vm)
         self.tabs.addTab(self.dest_playlist_widget, "Назначение")
 
-        right_layout.addWidget(self.tabs)
+        playlist_tabs_layout.addWidget(self.tabs)
+        self.content_stack.addWidget(playlist_tabs_widget)
+
+        # Transfer widget
+        self.transfer_widget = TransferWidget()
+        self._transfer_vm = TransferViewModel()
+        self.transfer_widget.set_view_model(self._transfer_vm)
+        self.transfer_widget.back_requested.connect(self._on_back_requested)
+        self.content_stack.addWidget(self.transfer_widget)
+
+        right_layout.addWidget(self.content_stack)
 
         splitter.setSizes([400, 600])
         logger.info("MainWindow initialized")
@@ -128,5 +149,25 @@ class MainWindow(QMainWindow):
 
     def _on_transfer_clicked(self):
         """Handle transfer button click"""
-        logger.info("Transfer requested")
-        self.transfer_requested.emit(None, None)
+        # Get selected playlists from ViewModels
+        source_playlist = self._source_vm.current_playlist or ""
+        dest_playlist = self._dest_vm.current_playlist or ""
+
+        # Set transfer info
+        self._transfer_vm.source_service = self._source_vm.current_service
+        self._transfer_vm.source_playlist = source_playlist
+        self._transfer_vm.destination_service = self._dest_vm.current_service
+        self._transfer_vm.destination_playlist = dest_playlist
+
+        # Switch to transfer view
+        self.content_stack.setCurrentIndex(1)
+
+        # Start transfer
+        self._transfer_vm.start_transfer()
+
+        logger.info("Transfer started")
+
+    def _on_back_requested(self):
+        """Handle back request from TransferWidget"""
+        self.content_stack.setCurrentIndex(0)
+        logger.info("Switched back to playlist view")
