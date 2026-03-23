@@ -3,7 +3,7 @@ from typing import List, Optional
 from mutagen import File as MutagenFile
 from dataclasses import dataclass
 
-from model.entities.track import Track
+from src.model.entities.track import Track
 
 
 class LocalDirectoryParser:
@@ -11,10 +11,18 @@ class LocalDirectoryParser:
     AUDIO_EXTENSIONS = {".mp3", ".flac", ".wav", ".m4a", ".ogg"}
 
     def parse_directory(self, directory: Path) -> List[Track]:
+        """
+        Parse directory for audio files.
 
+        Args:
+            directory: Path to directory to parse
+
+        Returns:
+            List of Track objects
+        """
         tracks: List[Track] = []
 
-        for file_path in directory.rglob("*"):
+        for file_path in directory.glob("*"):
 
             # Skip non-files
             if not file_path.is_file():
