@@ -91,24 +91,19 @@ class PlaylistWidget(QWidget):
 
         # Populate service combo
         self.service_combo.clear()
+        self.service_combo.addItem("Выберите сервис...")  # Placeholder
         self.service_combo.addItems(view_model.services)
+        self.service_combo.setCurrentIndex(0)  # Select placeholder
 
         # Connect ViewModel signals
-        view_model.service_changed.connect(self._on_service_changed_vm)
         view_model.playlists_loaded.connect(self._on_playlists_loaded)
         view_model.playlist_selected.connect(self._on_playlist_selected_vm)
         view_model.tracks_loaded.connect(self._on_tracks_loaded)
 
-        # Set initial state
-        self._on_service_changed_vm(view_model.current_service)
+        # Update auth status
+        self._update_auth_status()
 
     # ViewModel signal handlers
-
-    def _on_service_changed_vm(self, service: str):
-        """Handle service change from ViewModel"""
-        if service:
-            self.auth_status.setText("Авторизован")
-            self.auth_status.setStyleSheet("color: green;")
 
     def _on_playlists_loaded(self):
         """Handle playlists loaded from ViewModel"""
@@ -133,20 +128,50 @@ class PlaylistWidget(QWidget):
 
         self.track_count_label.setText(f"Треков: {len(tracks)}")
 
+    def _update_auth_status(self):
+        """Update authentication status display"""
+        if not self._viewModel:
+            return
+            
+        if self._viewModel.is_authenticated:
+            self.auth_status.setText("Авторизован")
+            self.auth_status.setStyleSheet("color: green;")
+            self.auth_btn.setEnabled(False)
+        else:
+            self.auth_status.setText("Требуется авторизация")
+            self.auth_status.setStyleSheet("color: red;")
+            self.auth_btn.setEnabled(True)
+
     # UI event handlers
 
     def _on_service_changed(self, service: str):
         """Handle service selection change"""
-        if self._viewModel:
+        if self._viewModel and service and service != "Выберите сервис...":
             self._viewModel.select_service(service)
 
     def _on_playlist_selected(self):
         """Handle playlist selection in UI"""
         current_item = self.playlist_list.currentItem()
         if current_item and self._viewModel:
-            self._viewModel.select_playlist(current_item.text())
+            self._viewModel.current_playlist = current_item.text()
 
     def _on_auth_clicked(self):
-        """Handle auth button click"""
+        """Handle auth button click - signals parent to show auth dialog"""
+        # Authentication is handled by MainWindow via signals
+        pass
+
+    def set_authenticated(self, is_auth: bool):
+        """Set authentication status (called by parent)"""
         if self._viewModel:
-            self._viewModel.authenticate()
+            self._viewModel.set_authenticated(is_auth)
+            self._update_auth_status()
+
+    def load_playlists(self, playlists: list):
+        """Load playlists (called by parent)"""
+        if self._viewModel:
+            self._viewModel.load_playlists(playlists)
+
+    def load_tracks(self, tracks: list):
+        """Load tracks (called by parent)"""
+        if self._viewModel:
+            self._viewModel.load_tracks(tracks)

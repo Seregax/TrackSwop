@@ -31,7 +31,7 @@ class VkService(IStreamingService):
     def __init__(self, config: Optional[Dict[str, Any]] = None):
         """
         Initialize the service.
-        
+
         Args:
             config: Service configuration (optional)
         """
@@ -40,6 +40,8 @@ class VkService(IStreamingService):
         self.user_id: Optional[int] = None
         self._vk: Optional[Any] = None
         self._vk_session: Optional[Any] = None
+        self._playlist_metadata: Dict[str, Dict[str, Any]] = {}  # Кэш метаданных плейлистов
+        self._track_metadata: Dict[str, Dict[str, Any]] = {}  # Кэш метаданных треков
 
     # IStreamingService Interface Methods
 
@@ -47,8 +49,7 @@ class VkService(IStreamingService):
         """Returns meta-information about the service"""
         return ServiceInfo(
             name="VK Music",
-            provider="vk.com",
-            supported_features=["import", "export", "auth"]
+            icon_path=None,
         )
 
     def authenticate(self) -> None:
@@ -76,83 +77,117 @@ class VkService(IStreamingService):
     def get_playlists(self) -> List[Playlist]:
         """
         Get the list of user playlists.
-        
+
         Returns:
             List[Playlist]: List of playlists
         """
         vk = self._get_vk_api()
         try:
-            response = vk.audio.getPlaylists(owner_id=self.user_id, count=100)
+            response = vk.audio.getPlaylists(owner_id=int(self.user_id), count=100)
             playlists = []
             for item in response.get("items", []):
-                playlists.append(self._map_vk_playlist_to_entity(item))
+                playlist = self._map_vk_playlist_to_entity(item)
+                playlists.append(playlist)
+            
+            # Сохраняем метаданные для всех плейлистов
+            self._save_playlist_metadata(response.get("items", []))
+            
             return playlists
         except Exception as e:
             raise RuntimeError(f"Error getting playlists: {str(e)}")
+    
+    def _save_playlist_metadata(self, vk_playlists: List[Dict[str, Any]]):
+        """
+        Save playlist metadata for later use.
+        
+        Args:
+            vk_playlists: List of playlist data from VK API
+        """
+        for item in vk_playlists:
+            playlist_id = item.get("id")
+            owner_id = item.get("owner_id")
+            access_key = item.get("access_key")
+            title = item.get("title", "Unknown Playlist")
+            
+            # Сохраняем метаданные по названию (ключ)
+            self._playlist_metadata[title] = {
+                "vk_playlist_id": playlist_id,
+                "owner_id": owner_id,
+                "access_key": access_key,
+                "photo": item.get("photo"),
+                "count": item.get("count", 0)
+            }
 
     def get_tracks_from_playlist(self, playlist: Playlist) -> List[Track]:
         """
         Get tracks from playlist.
-        
+
         VK API LIMITATION: audio.get may not work with all tokens.
         Falls back to search-based approach if direct access fails.
         """
         vk = self._get_vk_api()
-        
-        vk_playlist_id = playlist.name.metadata.get("vk_playlist_id")
-        owner_id = playlist.metadata.get("owner_id", self.user_id)
-        access_key = playlist.metadata.get("access_key")
-        
+
+        # Получаем метаданные плейлиста по названию
+        metadata = self._playlist_metadata.get(playlist.name, {})
+
+        vk_playlist_id = metadata.get("vk_playlist_id")
+        owner_id = metadata.get("owner_id", self.user_id)
+        access_key = metadata.get("access_key")
+
         # 🔹 Попытка 1: Прямой запрос (работает с полными токенами)
-        try:
-            params = {
-                "owner_id": int(owner_id),
-                "playlist_id": int(vk_playlist_id),
-                "count": 1000
-            }
-            if access_key:
-                params["access_key"] = str(access_key)
-            
-            response = vk.audio.get(**params)
-            tracks = [self._map_vk_track_to_entity(t) for t in response.get("items", [])]
-            
-            if tracks:
-                return tracks
-                
-        except Exception as e:
-            print(f" Direct playlist access failed: {e}")
-            print(" Falling back to search-based approach...")
-        
+        if vk_playlist_id:
+            try:
+                params = {
+                    "owner_id": int(owner_id),
+                    "playlist_id": int(vk_playlist_id),
+                    "count": 1000
+                }
+                if access_key:
+                    params["access_key"] = str(access_key)
+
+                response = vk.audio.get(**params)
+                tracks = [self._map_vk_track_to_entity(t) for t in response.get("items", [])]
+
+                if tracks:
+                    return tracks
+
+            except Exception as e:
+                # Fallback to search
+                pass
+
         # 🔹 Попытка 2: Поиск по названию плейлиста (костыль)
         try:
             search_query = playlist.name[:50]  # Ограничение VK
             response = vk.audio.search(q=search_query, count=50)
             tracks = [self._map_vk_track_to_entity(t) for t in response.get("items", [])]
-            
-            print(f" Using search fallback: {len(tracks)} tracks found")
             return tracks
-            
+
         except Exception as e:
             raise RuntimeError(f"Cannot get tracks: {str(e)}") from e
 
     def add_playlist(self, playlist: Playlist) -> None:
         """
         Create a new playlist in VKontakte.
-        
+
         Args:
             playlist: Playlist to create
-            
+
         Note:
-            After creation, vk_playlist_id is saved in playlist.metadata
+            After creation, vk_playlist_id is saved in internal cache
         """
         vk = self._get_vk_api()
         try:
             response = vk.playlist.create(
-                title=playlist.title,
-                description=playlist.description or ""
+                title=playlist.name,
+                description=""
             )
-            playlist.metadata["vk_playlist_id"] = response.get("playlist_id")
-            playlist.metadata["owner_id"] = self.user_id
+            playlist_id = response.get("playlist_id")
+            
+            # Сохраняем метаданные во внутренний кэш
+            self._playlist_metadata[playlist.name] = {
+                "vk_playlist_id": playlist_id,
+                "owner_id": self.user_id,
+            }
         except Exception as e:
             raise RuntimeError(f"Error creating playlist: {str(e)}")
 
@@ -162,31 +197,44 @@ class VkService(IStreamingService):
         Uses audio.search to find track if vk_audio_id not available.
         """
         vk = self._get_vk_api()
+
+        # Ищем метаданные трека по названию и артисту
+        track_key = f"{track.title}_{track.artists[0] if track.artists else ''}"
+        track_meta = self._track_metadata.get(track_key, {})
         
-        vk_audio_id = track.metadata.get("vk_audio_id")
-        track_owner_id = track.metadata.get("owner_id")
-        
+        vk_audio_id = track_meta.get("vk_audio_id")
+        track_owner_id = track_meta.get("owner_id")
+
         # Если нет ID трека — ищем по названию
         if not vk_audio_id:
             artist_name = track.artists[0] if track.artists else ""
             search_query = f"{artist_name} {track.title}"[:100]
-            
+
             search = vk.audio.search(q=search_query, count=1)
             if search.get("items"):
                 found = search["items"][0]
                 vk_audio_id = found["id"]
                 track_owner_id = found["owner_id"]
+                
+                # Сохраняем метаданные трека
+                self._track_metadata[track_key] = {
+                    "vk_audio_id": vk_audio_id,
+                    "owner_id": track_owner_id,
+                }
                 print(f"🔍 Found track via search: {vk_audio_id}")
             else:
                 raise ValueError(f"Track '{track.title}' not found in VK")
+
+        # Получаем метаданные плейлиста
+        playlist_meta = self._playlist_metadata.get(playlist.name, {})
+        vk_playlist_id = playlist_meta.get("vk_playlist_id")
         
-        vk_playlist_id = playlist.metadata.get("vk_playlist_id")
         if not vk_playlist_id:
-            raise ValueError("Playlist does not contain vk_playlist_id")
-        
+            raise ValueError("Playlist does not have vk_playlist_id")
+
         try:
-            vk.playlist.addTrack(
-                playlist_id=int(vk_playlist_id),
+            vk.audio.add(
+                album_id=int(vk_playlist_id),
                 audio_id=int(vk_audio_id),
                 owner_id=int(track_owner_id)
             )
@@ -280,59 +328,67 @@ class VkService(IStreamingService):
     def _map_vk_track_to_entity(self, vk_track: Dict[str, Any]) -> Track:
         """
         Convert track from VK API to internal Track entity.
-        
+
         Args:
             vk_track: Track data from VK API
-            
+
         Returns:
             Track: Internal track entity
         """
         # VK API возвращает artist как строку, преобразуем в список
         artist = vk_track.get("artist", "Unknown Artist")
         artists = [artist] if artist else ["Unknown Artist"]
-        
-        return Track(
+
+        # Извлекаем год из даты, если есть
+        year = None
+        if "date" in vk_track and vk_track["date"]:
+            try:
+                import datetime
+                dt = datetime.datetime.fromtimestamp(int(vk_track["date"]))
+                year = dt.year
+            except (ValueError, OSError):
+                pass
+
+        track = Track(
             title=vk_track.get("title", "Unknown"),
             artists=artists,
-            album=vk_track.get("album", ""),
-            year=None,  # VK API не всегда возвращает год
-            duration=float(vk_track.get("duration", 0)),
-            id=str(vk_track.get("id", "")),
-            metadata={
-                "vk_audio_id": vk_track.get("id"),
-                "owner_id": vk_track.get("owner_id"),
-                "url": vk_track.get("url"),
-                "access_key": vk_track.get("access_key")
-            }
+            album=vk_track.get("album", "") or None,
+            year=year,
+            duration=float(vk_track.get("duration", 0)) if vk_track.get("duration") else None,
         )
+        
+        # Сохраняем метаданные трека во внутренний кэш
+        track_key = f"{track.title}_{artists[0]}"
+        self._track_metadata[track_key] = {
+            "vk_audio_id": vk_track.get("id"),
+            "owner_id": vk_track.get("owner_id"),
+            "url": vk_track.get("url"),
+            "access_key": vk_track.get("access_key")
+        }
+        
+        return track
 
     def _map_vk_playlist_to_entity(self, vk_playlist: Dict[str, Any]) -> Playlist:
         """Convert playlist from VK API to internal Playlist entity."""
         
-        is_followed = vk_playlist.get("type") == 1 and "original" in vk_playlist
+        playlist_id = vk_playlist.get("id")
+        owner_id = vk_playlist.get("owner_id")
+        access_key = vk_playlist.get("access_key")
         
-        if is_followed:
-            original = vk_playlist.get("original", {})
-            playlist_id = original.get("playlist_id")
-            owner_id = original.get("owner_id")
-            access_key = original.get("access_key")
-        else:
-            playlist_id = vk_playlist.get("id")
-            owner_id = vk_playlist.get("owner_id")
-            access_key = vk_playlist.get("access_key")
-        
-        return Playlist(
+        # Создаём Playlist только с базовыми полями
+        playlist = Playlist(
             name=vk_playlist.get("title", "Unknown Playlist"),
             tracks=None,
-            id=str(vk_playlist.get("id", "")),
-            metadata={
-                "vk_playlist_id": playlist_id,
-                "owner_id": owner_id,
-                "access_key": access_key,
-                "is_followed": is_followed,
-                "photo": vk_playlist.get("photo"),
-                "count": vk_playlist.get("count", 0)
-            },
-            description=vk_playlist.get("description", ""),
-            track_count=vk_playlist.get("count", 0)
         )
+        
+        # Сохраняем метаданные в отдельном словаре (для внутреннего использования)
+        # Используем название плейлиста как ключ (упрощение)
+        self._playlist_metadata[playlist.name] = {
+            "vk_playlist_id": playlist_id,
+            "owner_id": owner_id,
+            "access_key": access_key,
+            "photo": vk_playlist.get("photo"),
+            "count": vk_playlist.get("count", 0)
+        }
+        
+        return playlist
