@@ -29,7 +29,7 @@ def main():
     )
 
     # Create and show main window
-    window = MainWindow()
+    window = MainWindow(token_store=token_store)
     window.show()
 
     logger.info("MainWindow shown")

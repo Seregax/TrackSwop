@@ -218,3 +218,5 @@ __marimo__/
 .idea
 .vscode
 tokens.json
+.qwen/
+gha-creds-*.json
