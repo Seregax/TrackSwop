@@ -70,6 +70,7 @@ class LocalDirectoryParser:
 
         except Exception:
             # For MVP we silently ignore corrupted files
+            logger.exception("Corrupted file ignored during MVP")
             return None
 
     def _get_tag(self, tags, keys: List[str]) -> Optional[str]:
@@ -108,5 +109,7 @@ class LocalDirectoryParser:
 
         try:
             return int(str(year)[:4])
-        except ValueError:
+        except ValueError as e:
+
+            logger.exception(f"Ошибка значения: {e}")
             return None

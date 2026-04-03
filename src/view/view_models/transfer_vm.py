@@ -102,6 +102,7 @@ class TransferWorker(QObject):
                     success_count += 1
                     self.track_processed.emit(track.title, True, "")
                 except Exception as e:
+                    logger.warning(f"Failed to process track '{track.title}': {e}")
                     fail_count += 1
                     self.track_processed.emit(track.title, False, str(e))
                 
@@ -113,6 +114,7 @@ class TransferWorker(QObject):
                 self.transfer_completed.emit(success_count, fail_count)
                 
         except Exception as e:
+            logger.warning(f"Transfer failed '{track.title}': {e}")
             self.transfer_error.emit(str(e))
     
     def cancel(self):

@@ -13,6 +13,9 @@ from src.model.services.interfaces.istreaming_service import IStreamingService
 from src.view.view_models.playlist_vm import PlaylistViewModel
 from src.view.view_models.transfer_vm import TransferViewModel
 
+from src.common.logger import get_logger
+
+logger = get_logger(__name__)
 
 class MainWindowViewModel(QObject):
     """
@@ -123,7 +126,7 @@ class MainWindowViewModel(QObject):
             return True
             
         except Exception as e:
-            print(f"Authentication error for {service_name}: {e}")
+            logger.error(f"Authentication error for {service_name}: {e}")
             self.authentication_completed.emit(service_name, False)
             return False
     
@@ -152,7 +155,9 @@ class MainWindowViewModel(QObject):
                 service.authenticate()
                 self._auth_services[service_name] = service
                 return service
-            except Exception:
+            except Exception as e:
+                    logger.error(f"Failed to get authenticated service instance. {service_name}: {e}")
+                    
                 pass
         
         return None
@@ -166,7 +171,7 @@ class MainWindowViewModel(QObject):
         dest_name = self._dest_vm.selected_service
         
         if not source_name or not dest_name:
-            print("Error: Services not selected")
+            logger.info("Error: Services not selected")
             return
         
         # Get authenticated services
@@ -174,7 +179,7 @@ class MainWindowViewModel(QObject):
         dest_service = self.get_authenticated_service(dest_name)
         
         if not source_service or not dest_service:
-            print("Error: Services not authenticated")
+            logger.info("Error: Services not authenticated")
             return
         
         # Get playlist objects from ViewModels
@@ -182,7 +187,7 @@ class MainWindowViewModel(QObject):
         dest_playlist = self._dest_vm.current_playlist_object
         
         if not all([source_playlist, dest_playlist]):
-            print("Error: Playlists not selected")
+            logger.info("Error: Playlists not selected")
             return
         
         # Configure transfer VM

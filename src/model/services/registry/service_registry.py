@@ -9,6 +9,9 @@ from typing import Dict, Type, Optional, Any
 from src.model.services.interfaces.istreaming_service import IStreamingService
 from src.model.store.token_store import TokenStore
 
+from src.common.logger import get_logger
+
+logger = get_logger(__name__)
 
 class ServiceRegistry:
     """
@@ -39,19 +42,19 @@ class ServiceRegistry:
             from src.model.services.providers.spotify.factory import SpotifyServiceFactory
             self._factories["spotify"] = SpotifyServiceFactory
         except ImportError as e:
-            print(f"Warning: Could not register Spotify factory: {e}")
+            logger.warning(f"Could not register Spotify factory: {e}")
 
         try:
             from src.model.services.providers.vk.factory import VkServiceFactory
             self._factories["vk"] = VkServiceFactory
         except ImportError as e:
-            print(f"Warning: Could not register VK factory: {e}")
+            logger.warning(f"Could not register VK factory: {e}")
 
         try:
             from src.model.services.providers.local.factory import LocalServiceFactory
             self._factories["local"] = LocalServiceFactory
         except ImportError as e:
-            print(f"Warning: Could not register Local factory: {e}")
+            logger.warning(f"Could not register Local factory: {e}")
     
     def register_factory(self, service_name: str, factory_class: Type):
         """

@@ -5,6 +5,9 @@ from typing import Optional, Union
 
 from cryptography.fernet import Fernet
 
+from src.common.logger import get_logger
+
+logger = get_logger(__name__)
 
 class TokenStore:
     def __init__(self, path: Union[str, Path] = "tokens.json", master_key: Optional[bytes] = None):
@@ -16,7 +19,7 @@ class TokenStore:
             if not key:
                 # Генерируем временный ключ для разработки
                 key = Fernet.generate_key().decode()
-                print("WARNING: generated temp key, set TRACKSWOP_MASTER_KEY for real usage")
+                logger.info("WARNING: generated temp key, set TRACKSWOP_MASTER_KEY for real usage")
             master_key = key.encode()
 
         # Приводим к формату, который хочет Fernet: 32 байта base64
@@ -51,6 +54,7 @@ class TokenStore:
             decrypted = self.cipher.decrypt(encrypted.encode()).decode()
             return decrypted
         except Exception:
+            logger.exception("Failed to get a token")
             return None
 
     def delete_token(self, service: str) -> None:

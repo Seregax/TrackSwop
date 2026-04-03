@@ -5,6 +5,9 @@ from typing import Optional, Tuple
 from pathlib import Path
 import json
 
+from src.common.logger import get_logger
+
+logger = get_logger(__name__)
 
 class SpotifyConfig:
     """Helper class for Spotify service configuration"""
@@ -58,7 +61,7 @@ class SpotifyConfig:
                 ),
             )
         except Exception as e:
-            print(f"Error reading config file: {e}")
+            logger.warning(f"Error reading config file: {e}")
             return None
 
     def __init__(
@@ -88,8 +91,8 @@ class SpotifyConfig:
         # Set permissions (user read/write only)
         config_path.chmod(0o600)
 
-        print(f"Configuration saved to {path}")
-        print("⚠️  Make sure to add this file to .gitignore!")
+        logger.info(f"Configuration saved to {path}")
+        logger.info("⚠️  Make sure to add this file to .gitignore!")
 
     def to_env_export(self) -> str:
         """Return shell export commands for environment variables"""
@@ -119,19 +122,19 @@ class SpotifySetupWizard:
     @staticmethod
     def run() -> SpotifyConfig:
         """Run the interactive setup wizard"""
-        print("\n╔════════════════════════════════════════╗")
-        print("║   Spotify Setup Wizard                 ║")
-        print("╚════════════════════════════════════════╝\n")
+        logger.info("\n╔════════════════════════════════════════╗")
+        logger.info("║   Spotify Setup Wizard                 ║")
+        logger.info("╚════════════════════════════════════════╝\n")
 
-        print("Before you start, you need to create a Spotify App:")
-        print("1. Go to https://developer.spotify.com/dashboard")
-        print("2. Log in with your Spotify account (create one if needed)")
-        print("3. Create an app and get:")
-        print("   - Client ID")
-        print("   - Client Secret\n")
+        logger.info("Before you start, you need to create a Spotify App:")
+        logger.info("1. Go to https://developer.spotify.com/dashboard")
+        logger.info("2. Log in with your Spotify account (create one if needed)")
+        logger.info("3. Create an app and get:")
+        logger.info("   - Client ID")
+        logger.info("   - Client Secret\n")
 
         # Get client ID
-        print("Enter your Spotify credentials:")
+        logger.info("Enter your Spotify credentials:")
         client_id = input("Client ID: ").strip()
 
         if not client_id:
@@ -159,14 +162,14 @@ class SpotifySetupWizard:
         )
 
         # Save option
-        print("\n" + str(config))
+        logger.info("\n" + str(config))
         save = input("\nSave to .spotify_config.json? (y/n): ").strip().lower()
 
         if save == "y":
             config.save_to_file()
-            print("\nConfiguration saved successfully!")
+            logger.info("\nConfiguration saved successfully!")
 
-        print("\nYou can also set environment variables:")
-        print(config.to_env_export())
+        logger.info("\nYou can also set environment variables:")
+        logger.info(config.to_env_export())
 
         return config

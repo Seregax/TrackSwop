@@ -1,7 +1,7 @@
 import logging
 import sys
 from pathlib import Path
-from logging.handlers import RotatingFileHandler # <-- Добавили нормальный хэндлер
+from logging.handlers import RotatingFileHandler
 
 SIMPLE_FORMAT = "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
 DATE_FORMAT = "%H:%M:%S"
@@ -18,8 +18,8 @@ def setup_logger(log_file: str = "app.log", level=logging.INFO):
 
     formatter = logging.Formatter(SIMPLE_FORMAT, DATE_FORMAT)
 
-    # ВОТ ТВОЯ ИНТЕГРАЦИЯ: Заменили тупой FileHandler на умный RotatingFileHandler
-    # Теперь файл не будет пухнуть больше 5 МБ, и будет храниться 3 старых бэкапа
+    # Use RotatingFileHandler to prevent log file from growing indefinitely
+    # Max size is 5MB, keep up to 3 backup files
     file_handler = RotatingFileHandler(
         log_file, 
         maxBytes=5 * 1024 * 1024, 

@@ -44,15 +44,17 @@ class Field:
         if self.field_type == FieldType.NUMBER:
             try:
                 float(value)
-            except (ValueError, TypeError):
+            except (ValueError, TypeError) as e:
                 errors.append(f"'{self.label}' must be a number")
+                logger.exception(f"'{self.label}' must be a number")
 
         for validator in self.validators:
             try:
                 validator(value)
             except ValueError as e:
                 errors.append(str(e))
-
+                logger.exception(f"Error adding value: {str(e)}") from e
+                
         return errors
 
 

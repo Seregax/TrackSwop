@@ -143,10 +143,14 @@ class SpotifyService(IStreamingService):
             token_info = auth_manager.get_access_token()
 
             if not token_info:
+
+                logger.error("Failed to obtain Spotify access token")
                 raise Exception("Failed to obtain Spotify access token")
 
             access_token = token_info.get("access_token")
             if not access_token:
+
+                logger.error("No access token in response")
                 raise Exception("No access token in response")
 
             # Save token for future use
@@ -177,6 +181,7 @@ class SpotifyService(IStreamingService):
     def get_playlists(self) -> List[Playlist]:
         """Get all user playlists"""
         if not self.sp:
+            logger.error("Not authenticated. Call authenticate() first.")
             raise Exception("Not authenticated. Call authenticate() first.")
 
         try:
@@ -207,6 +212,7 @@ class SpotifyService(IStreamingService):
     def get_tracks_from_playlist(self, playlist: Playlist) -> List[Track]:
         """Get all tracks from a specific playlist"""
         if not self.sp:
+            logger.error("Not authenticated. Call authenticate() first.")
             raise Exception("Not authenticated. Call authenticate() first.")
 
         try:
@@ -252,6 +258,7 @@ class SpotifyService(IStreamingService):
     def add_playlist(self, playlist: Playlist) -> None:
         """Create new playlist"""
         if not self.sp:
+            logger.error("Not authenticated. Call authenticate() first.")
             raise Exception("Not authenticated. Call authenticate() first.")
 
         try:
@@ -269,6 +276,8 @@ class SpotifyService(IStreamingService):
     def add_track_to_playlist(self, playlist: Playlist, track: Track) -> None:
         """Add track to playlist"""
         if not self.sp:
+
+            logger.error("Not authenticated. Call authenticate() first.")
             raise Exception("Not authenticated. Call authenticate() first.")
 
         try:
@@ -293,6 +302,7 @@ class SpotifyService(IStreamingService):
     def export_playlist(self, source: Playlist, destination: Playlist) -> None:
         """Export playlist from Spotify to another service"""
         if not self.sp:
+            logger.error("Not authenticated. Call authenticate() first.")
             raise Exception("Not authenticated. Call authenticate() first.")
 
         try:

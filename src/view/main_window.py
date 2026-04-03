@@ -274,6 +274,7 @@ class MainWindow(QMainWindow):
                         playlists = authenticated_service.get_playlists()
                         widget.load_playlists(playlists)
                     except Exception as e:
+                        logger.error(f"Failed to load playlists: {e}")
                         QMessageBox.critical(
                             self,
                             "Ошибка",
@@ -315,6 +316,7 @@ class MainWindow(QMainWindow):
             tracks = service.get_tracks_from_playlist(playlist)
             widget.load_tracks(tracks)
         except Exception as e:
+            logger.error(f"Не удалось загрузить треки: {e}")
             QMessageBox.critical(
                 self,
                 "Ошибка",
