@@ -75,7 +75,7 @@ TrackSwop simplifies playlist migration and synchronization between music stream
 
 ### Setup
 
-```bash id="q8v2wm"
+```bash id="k9x2lm"
 git clone https://github.com/Seregax/TrackSwop.git
 cd TrackSwop
 
@@ -88,7 +88,7 @@ pip install -r requirements.txt
 
 ### Development dependencies (optional)
 
-```bash id="k3n9fp"
+```bash id="d3p8vq"
 pip install -r requirements.dev.txt
 ```
 
@@ -98,7 +98,7 @@ pip install -r requirements.dev.txt
 
 Run the application:
 
-```bash id="z1m7qv"
+```bash id="f1v7sa"
 python src/main.py
 ```
 
@@ -110,7 +110,6 @@ python src/main.py
 * PySide6 (UI framework)
 * Spotipy (Spotify API client)
 * vk_api (VK API integration)
-* Redis (optional infrastructure layer)
 * Requests (HTTP client)
 * Cryptography (secure token storage)
 * Mutagen (audio metadata processing)
@@ -137,18 +136,18 @@ TrackSwop is built using a modular layered architecture:
 
 ## Project Structure
 
-```text id="r2t6kd"
+```text id="r8k1pw"
 src/
  ├── view/                     # UI layer (PySide6)
- ├── view_models/              # MVVM presentation logic
+ ├── view_models/             # MVVM presentation logic
  ├── model/
- │   ├── entities/             # Domain models (Playlist, Track)
+ │   ├── entities/            # Domain models (Playlist, Track)
  │   ├── services/
- │   │   └── providers/        # Music service implementations
- │   ├── specifications/       # Auth / Import / Export specs
- │   └── store/                # Token storage (TokenStore)
+ │   │   └── providers/       # Music service implementations
+ │   ├── specifications/      # Auth / Import / Export specs
+ │   └── store/               # Token storage (TokenStore)
  ├── common/
- │   └── config.py             # Application configuration
+ │   └── config.py            # Application configuration
 tests/
 ```
 
@@ -184,7 +183,7 @@ Generates UI forms dynamically based on provider specifications:
 
 ### Example configuration
 
-```python id="p4x8ab"
+```python id="q2v9nd"
 Config(
     app_name="TrackSwop",
     version="0.1.0",
@@ -199,7 +198,7 @@ Config(
 
 Application logs are written to:
 
-```text id="l0v9sd"
+```text id="l4x7pm"
 app.log
 ```
 
@@ -216,13 +215,13 @@ The project includes unit tests for core components:
 
 ### Run tests
 
-```bash id="t7c2mv"
+```bash id="t9c2wv"
 pytest
 ```
 
 or
 
-```bash id="w9p1qn"
+```bash id="w1p8qn"
 python -m unittest
 ```
 
@@ -249,7 +248,7 @@ Each provider must implement:
 
 ### Example
 
-```python id="v3n8kp"
+```python id="v6n2kp"
 class MyMusicProvider:
     def get_service_info(self):
         ...
