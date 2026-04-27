@@ -127,7 +127,7 @@ class LocalDirectoryParser:
             )
 
         except Exception as e:
-            logger.warning("Skipping audio file %s: %s", file_path, e)
+            logger.exception("Skipping audio file %s: %s", file_path, e)
             return None
 
     def _get_tag(self, tags, keys: List[str]) -> Optional[str]:
@@ -165,7 +165,9 @@ class LocalDirectoryParser:
 
         try:
             return int(str(year)[:4])
-        except ValueError:
+          
+        except ValueError as e:
+            logger.exception(f"Ошибка значения: {e}")
             return None
 
     def _parse_filename(self, stem: str) -> tuple[str, List[str]]:

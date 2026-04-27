@@ -496,6 +496,7 @@ class MainWindow(QMainWindow):
             
             logger.info(f"Tracks loaded successfully")
         except Exception as e:
+            logger.error(f"Не удалось загрузить треки: {e}")
             QMessageBox.critical(
                 self,
                 "Ошибка",
