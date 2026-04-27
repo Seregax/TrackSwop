@@ -11,17 +11,6 @@ jobs:
     name: Run pytest
     runs-on: ubuntu-latest
 
-    services:
-      redis:
-        image: redis:7
-        ports:
-          - 6379:6379
-        options: >-
-          --health-cmd "redis-cli ping"
-          --health-interval 5s
-          --health-timeout 3s
-          --health-retries 5
-
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -52,7 +41,6 @@ jobs:
       - name: Run tests
         env:
           DISPLAY: ":99"
-          REDIS_URL: "redis://localhost:6379"
         run: |
           Xvfb :99 -screen 0 1280x720x24 &
           sleep 1
