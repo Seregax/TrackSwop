@@ -82,13 +82,15 @@ class TestMainWindowViewModel(unittest.TestCase):
         # Mock services and playlists
         mock_source_service = Mock()
         mock_dest_service = Mock()
-        mock_source_playlist = Mock()
-        mock_dest_playlist = Mock()
+        mock_source_playlist_object = Mock()
+        mock_dest_playlist_object = Mock()
 
         self.vm._source_vm._selected_service = "spotify"
         self.vm._dest_vm._selected_service = "vk"
-        self.vm._source_vm._current_playlist_object = mock_source_playlist
-        self.vm._dest_vm._current_playlist_object = mock_dest_playlist
+        self.vm._source_vm._current_playlist = "Source playlist"
+        self.vm._dest_vm._current_playlist = "Dest playlist"
+        self.vm._source_vm._playlist_objects = {"Source playlist": mock_source_playlist_object}
+        self.vm._dest_vm._playlist_objects = {"Dest playlist": mock_dest_playlist_object}
 
         with patch.object(self.vm, 'get_authenticated_service') as mock_get_auth:
             mock_get_auth.side_effect = [mock_source_service, mock_dest_service]
@@ -99,7 +101,7 @@ class TestMainWindowViewModel(unittest.TestCase):
 
                     mock_set_instances.assert_called_once_with(
                         mock_source_service, mock_dest_service,
-                        mock_source_playlist, mock_dest_playlist
+                        mock_source_playlist_object, mock_dest_playlist_object
                     )
                     mock_start.assert_called_once()
 
