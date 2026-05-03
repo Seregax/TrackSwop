@@ -1,7 +1,7 @@
 """Tests for Yandex Music public playlist import service."""
 
 import unittest
-from unittest.mock import Mock
+from unittest.mock import Mock, patch
 
 import requests
 
@@ -15,9 +15,11 @@ from src.model.services.providers.yandex.yandex_service import YandexMusicServic
 
 
 class MockResponse:
-    def __init__(self, data=None, status_code=200):
+    def __init__(self, data=None, status_code=200, text="", url="https://music.yandex.ru/mock"):
         self._data = data if data is not None else {}
         self.status_code = status_code
+        self.text = text
+        self.url = url
 
     def raise_for_status(self):
         if self.status_code >= 400:
@@ -58,6 +60,56 @@ class TestYandexMusicService(unittest.TestCase):
         self.assertEqual(ref.owner, "some-user")
         self.assertEqual(ref.kind, "42")
         self.assertEqual(ref.host, "music.yandex.com")
+
+    def test_parse_playlist_url_new_share_format(self):
+        ref = YandexMusicService._parse_playlist_url(
+            "https://music.yandex.ru/playlists/lk.a010eeb5-5c3a-4b85-8dc2-b3838e175056"
+        )
+
+        self.assertIsNone(ref.owner)
+        self.assertIsNone(ref.kind)
+        self.assertEqual(ref.share_id, "lk.a010eeb5-5c3a-4b85-8dc2-b3838e175056")
+        self.assertEqual(ref.host, "music.yandex.ru")
+
+    def test_extract_playlist_url_from_embed_code(self):
+        html = (
+            '<iframe frameborder="0" allow="clipboard-write" '
+            'src="https://music.yandex.ru/iframe/playlist/timafeibogdanoff/1007">'
+            "</iframe>"
+        )
+
+        extracted = YandexMusicService._extract_playlist_url_from_embed_code(html)
+
+        self.assertEqual(
+            extracted,
+            "https://music.yandex.ru/iframe/playlist/timafeibogdanoff/1007",
+        )
+
+    def test_extract_playlist_url_from_embed_code_without_quotes(self):
+        html = (
+            "<iframe frameborder=0 allow=clipboard-write "
+            "src=https://music.yandex.ru/iframe/playlist/timafeibogdanoff/1007>"
+            "</iframe>"
+        )
+
+        extracted = YandexMusicService._extract_playlist_url_from_embed_code(html)
+
+        self.assertEqual(
+            extracted,
+            "https://music.yandex.ru/iframe/playlist/timafeibogdanoff/1007",
+        )
+
+    def test_parse_playlist_url_iframe_format(self):
+        ref = YandexMusicService._parse_playlist_url(
+            "https://music.yandex.ru/iframe/playlist/timafeibogdanoff/1007"
+        )
+
+        self.assertEqual(ref.owner, "timafeibogdanoff")
+        self.assertEqual(ref.kind, "1007")
+        self.assertEqual(
+            ref.original_url,
+            "https://music.yandex.ru/users/timafeibogdanoff/playlists/1007",
+        )
 
     def test_parse_playlist_url_rejects_other_hosts(self):
         with self.assertRaises(ValueError):
@@ -102,6 +154,77 @@ class TestYandexMusicService(unittest.TestCase):
         self.assertEqual(tracks[0].album, "Album One")
         self.assertEqual(tracks[0].year, 2024)
         self.assertEqual(tracks[0].duration, 180.0)
+
+    def test_authenticate_loads_new_share_format(self):
+        service = YandexMusicService(
+            playlist_url="https://music.yandex.ru/playlists/lk.a010eeb5-5c3a-4b85-8dc2-b3838e175056",
+            session=self.session,
+        )
+        self.session.get.side_effect = [
+            MockResponse(
+                text=(
+                    '...'
+                    '"preloadedPlaylistByUuid":{"owner":{"uid":917505736,'
+                    '"login":"timafeibogdanoff","name":"User"},'
+                    '"playlistUuid":"lk.a010eeb5-5c3a-4b85-8dc2-b3838e175056",'
+                    '"available":true,"uid":917505736,"kind":3,"title":"Мне нравится"}'
+                    '...'
+                )
+            ),
+            MockResponse(
+                {
+                    "playlist": {
+                        "title": "Мне нравится",
+                        "tracks": [
+                            {
+                                "id": "1",
+                                "title": "Song One",
+                                "artists": [{"name": "Artist One"}],
+                            }
+                        ],
+                        "trackIds": ["1"],
+                    }
+                }
+            ),
+        ]
+
+        service.authenticate()
+        playlists = service.get_playlists()
+
+        self.assertEqual(len(playlists), 1)
+        self.assertEqual(playlists[0].name, "Мне нравится")
+        self.assertEqual(self.session.get.call_count, 2)
+
+    def test_authenticate_html_embed_uses_iframe_source(self):
+        html = (
+            '<iframe src="https://music.yandex.ru/iframe/playlist/timafeibogdanoff/1007">'
+            "</iframe>"
+        )
+        service = YandexMusicService(
+            playlist_url=html,
+            session=self.session,
+        )
+        self.session.get.return_value = MockResponse(
+            {
+                "playlist": {
+                    "title": "Тренировка",
+                    "tracks": [
+                        {
+                            "id": "1",
+                            "title": "Song One",
+                            "artists": [{"name": "Artist One"}],
+                        }
+                    ],
+                    "trackIds": ["1"],
+                }
+            }
+        )
+
+        service.authenticate()
+
+        self.assertEqual(service.get_playlists()[0].name, "Тренировка")
+        call_kwargs = self.session.get.call_args.kwargs
+        self.assertIn("/users/timafeibogdanoff/playlists/1007", call_kwargs["headers"]["Referer"])
 
     def test_authenticate_loads_missing_track_entries(self):
         self.session.get.side_effect = [
@@ -152,6 +275,35 @@ class TestYandexMusicService(unittest.TestCase):
 
         with self.assertRaises(ServiceError):
             self.service.authenticate()
+
+    def test_authenticate_new_share_format_reports_captcha(self):
+        service = YandexMusicService(
+            playlist_url="https://music.yandex.ru/playlists/lk.a010eeb5-5c3a-4b85-8dc2-b3838e175056",
+            session=self.session,
+        )
+        self.session.get.return_value = MockResponse(
+            text="captcha",
+            url="https://music.yandex.ru/showcaptcha?x=1",
+        )
+        retry_session_1 = Mock()
+        retry_session_1.get.return_value = MockResponse(
+            text="captcha",
+            url="https://music.yandex.ru/showcaptcha?x=2",
+        )
+        retry_session_2 = Mock()
+        retry_session_2.get.return_value = MockResponse(
+            text="captcha",
+            url="https://music.yandex.ru/showcaptcha?x=3",
+        )
+
+        with patch(
+            "src.model.services.providers.yandex.yandex_service.requests.Session",
+            side_effect=[retry_session_1, retry_session_2],
+        ):
+            with self.assertRaises(ServiceError) as ctx:
+                service.authenticate()
+
+        self.assertIn("captcha", str(ctx.exception).lower())
 
     def test_add_and_export_are_not_supported(self):
         playlist = Playlist(name="Playlist", tracks=[])

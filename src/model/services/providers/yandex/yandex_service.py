@@ -1,7 +1,8 @@
 import time
 from dataclasses import dataclass
 from typing import Any, Dict, List, Optional
-from urllib.parse import parse_qs, unquote, urlparse
+from urllib.parse import unquote, urlparse
+import re
 
 import requests
 
@@ -23,10 +24,11 @@ logger = get_logger(__name__)
 class YandexPlaylistReference:
     """Parsed public Yandex Music playlist reference."""
 
-    owner: str
-    kind: str
+    owner: Optional[str]
+    kind: Optional[str]
     host: str
     original_url: str
+    share_id: Optional[str] = None
 
 
 class YandexMusicService(IStreamingService):
@@ -40,6 +42,22 @@ class YandexMusicService(IStreamingService):
     SERVICE_NAME = "yandex"
     SUPPORTED_HOSTS = {"music.yandex.ru", "music.yandex.com"}
     REQUEST_TIMEOUT_SECONDS = 10
+    TRACK_ENTRIES_BATCH_SIZE = 100
+    SHARE_PAGE_ATTEMPTS = 3
+    SHARE_PLAYLIST_PATTERNS = (
+        re.compile(
+            r'"preloadedPlaylistByUuid":\{"owner":\{.*?"login":"(?P<owner>[^"]+)".*?"kind":(?P<kind>\d+)',
+            re.DOTALL,
+        ),
+        re.compile(
+            r'\\"preloadedPlaylistByUuid\\":\{\\"owner\\":\{.*?\\"login\\":\\"(?P<owner>[^"]+)\\".*?\\"kind\\":(?P<kind>\d+)',
+            re.DOTALL,
+        ),
+    )
+    EMBED_IFRAME_SRC_PATTERN = re.compile(
+        r'src\s*=\s*(?:"(?P<quoted>https?://music\.yandex\.(?:ru|com)/iframe/playlist/[^"]+)"|(?P<plain>https?://music\.yandex\.(?:ru|com)/iframe/playlist/[^\s>]+))',
+        re.IGNORECASE,
+    )
 
     def __init__(
         self,
@@ -70,7 +88,9 @@ class YandexMusicService(IStreamingService):
             raise AuthError("Yandex Music playlist link is required")
 
         try:
-            self._playlist_ref = self._parse_playlist_url(self.playlist_url)
+            normalized_input = self._extract_playlist_url_from_embed_code(self.playlist_url)
+            self._playlist_ref = self._parse_playlist_url(normalized_input)
+            self._playlist_ref = self._resolve_playlist_reference(self._playlist_ref)
             playlist_data = self._load_playlist_data(self._playlist_ref)
             playlist_title = self._extract_playlist_title(playlist_data)
             raw_tracks = self._extract_raw_tracks(playlist_data, self._playlist_ref)
@@ -149,27 +169,117 @@ class YandexMusicService(IStreamingService):
             raise ValueError("Unsupported Yandex Music host")
 
         path_parts = [part for part in parsed.path.split("/") if part]
-        if (
-            len(path_parts) != 4
-            or path_parts[0] != "users"
-            or path_parts[2] != "playlists"
-        ):
-            raise ValueError(
-                "Expected Yandex Music playlist link format: "
-                "https://music.yandex.ru/users/<user>/playlists/<id>"
+        if len(path_parts) == 4 and path_parts[0] == "users" and path_parts[2] == "playlists":
+            owner = unquote(path_parts[1]).strip()
+            kind = unquote(path_parts[3]).strip()
+            if not owner or not kind:
+                raise ValueError("Yandex Music playlist owner and id are required")
+
+            return YandexPlaylistReference(
+                owner=owner,
+                kind=kind,
+                host=host,
+                original_url=playlist_url.strip(),
             )
 
-        owner = unquote(path_parts[1]).strip()
-        kind = unquote(path_parts[3]).strip()
+        if len(path_parts) == 2 and path_parts[0] == "playlists":
+            share_id = unquote(path_parts[1]).strip()
+            if not share_id:
+                raise ValueError("Yandex Music playlist share id is required")
+
+            return YandexPlaylistReference(
+                owner=None,
+                kind=None,
+                host=host,
+                original_url=playlist_url.strip(),
+                share_id=share_id,
+            )
+
+        if len(path_parts) == 4 and path_parts[0] == "iframe" and path_parts[1] == "playlist":
+            owner = unquote(path_parts[2]).strip()
+            kind = unquote(path_parts[3]).strip()
+            if not owner or not kind:
+                raise ValueError("Yandex Music iframe playlist owner and id are required")
+
+            return YandexPlaylistReference(
+                owner=owner,
+                kind=kind,
+                host=host,
+                original_url=f"https://{host}/users/{owner}/playlists/{kind}",
+            )
+
+        raise ValueError(
+            "Expected Yandex Music playlist link format: "
+            "https://music.yandex.ru/users/<user>/playlists/<id> "
+            "or https://music.yandex.ru/playlists/<share_id> "
+            "or iframe embed HTML with https://music.yandex.ru/iframe/playlist/<user>/<id>"
+        )
+
+    @classmethod
+    def _extract_playlist_url_from_embed_code(cls, raw_input: str) -> str:
+        value = raw_input.strip()
+
+        if "<iframe" not in value.lower():
+            return value
+
+        match = cls.EMBED_IFRAME_SRC_PATTERN.search(value)
+        if match:
+            return match.group("quoted") or match.group("plain")
+
+        raise ValueError("Could not extract Yandex Music iframe src from embed HTML")
+
+    def _resolve_playlist_reference(
+        self,
+        ref: YandexPlaylistReference,
+    ) -> YandexPlaylistReference:
+        if ref.owner and ref.kind:
+            return ref
+
+        if not ref.share_id:
+            raise ServiceError(
+                "Yandex Music playlist reference is incomplete",
+                "Could not resolve the Yandex Music playlist link.",
+            )
+
+        page_html = self._get_text(ref.original_url, ref=ref)
+        match = self._match_share_playlist_metadata(page_html)
+
+        if not match:
+            raise ServiceError(
+                "Could not resolve shared Yandex Music playlist link",
+                "Could not parse the shared Yandex Music playlist page.",
+            )
+
+        owner = match.group("owner").strip()
+        kind = match.group("kind").strip()
+
         if not owner or not kind:
-            raise ValueError("Yandex Music playlist owner and id are required")
+            raise ServiceError(
+                "Shared Yandex Music playlist page does not contain owner or playlist id",
+                "Could not parse the shared Yandex Music playlist page.",
+            )
+
+        logger.info(
+            "Resolved Yandex Music share link '%s' to owner='%s', kind='%s'",
+            ref.share_id,
+            owner,
+            kind,
+        )
 
         return YandexPlaylistReference(
             owner=owner,
             kind=kind,
-            host=host,
-            original_url=playlist_url.strip(),
+            host=ref.host,
+            original_url=ref.original_url,
+            share_id=ref.share_id,
         )
+
+    def _match_share_playlist_metadata(self, page_html: str) -> Optional[re.Match]:
+        for pattern in self.SHARE_PLAYLIST_PATTERNS:
+            match = pattern.search(page_html)
+            if match:
+                return match
+        return None
 
     def _load_playlist_data(self, ref: YandexPlaylistReference) -> Dict[str, Any]:
         endpoint = f"https://{ref.host}/handlers/playlist.jsx"
@@ -213,6 +323,11 @@ class YandexMusicService(IStreamingService):
                 timeout=self.REQUEST_TIMEOUT_SECONDS,
                 headers=self._request_headers(ref),
             )
+            if "showcaptcha" in response.url:
+                raise ServiceError(
+                    "Yandex Music requested captcha for playlist API",
+                    "Yandex Music requested captcha while loading the playlist.",
+                )
             response.raise_for_status()
             return response.json()
         except requests.Timeout as e:
@@ -221,7 +336,7 @@ class YandexMusicService(IStreamingService):
                 "Yandex Music did not respond in time.",
             ) from e
         except requests.HTTPError as e:
-            status_code = e.response.status_code if e.response else None
+            status_code = e.response.status_code if e.response is not None else None
             if status_code in {403, 404}:
                 raise ServiceError(
                     f"Yandex Music playlist is unavailable: HTTP {status_code}",
@@ -242,18 +357,97 @@ class YandexMusicService(IStreamingService):
                 "Could not parse the Yandex Music playlist page.",
             ) from e
 
-    def _request_headers(self, ref: YandexPlaylistReference) -> Dict[str, str]:
+    def _get_text(
+        self,
+        url: str,
+        ref: YandexPlaylistReference,
+    ) -> str:
+        last_captcha_error: Optional[ServiceError] = None
+
+        for attempt in range(1, self.SHARE_PAGE_ATTEMPTS + 1):
+            session = self._session if attempt == 1 else requests.Session()
+            try:
+                response = session.get(
+                    url,
+                    timeout=self.REQUEST_TIMEOUT_SECONDS,
+                    headers=self._request_headers(ref, accept_json=False),
+                )
+                if "showcaptcha" in response.url:
+                    last_captcha_error = ServiceError(
+                        "Yandex Music requested captcha for shared playlist page",
+                        "Yandex Music requested captcha while opening the shared playlist link.",
+                    )
+                    logger.warning(
+                        "Yandex Music share page returned captcha on attempt %s/%s",
+                        attempt,
+                        self.SHARE_PAGE_ATTEMPTS,
+                    )
+                    if attempt < self.SHARE_PAGE_ATTEMPTS:
+                        time.sleep(0.4)
+                        continue
+                    raise last_captcha_error
+
+                response.raise_for_status()
+                self._session = session
+                return response.text
+            except requests.Timeout as e:
+                raise ServiceError(
+                    "Yandex Music request timed out",
+                    "Yandex Music did not respond in time.",
+                ) from e
+            except requests.HTTPError as e:
+                status_code = e.response.status_code if e.response is not None else None
+                if status_code in {403, 404}:
+                    raise ServiceError(
+                        f"Yandex Music playlist is unavailable: HTTP {status_code}",
+                        "The Yandex Music playlist is unavailable or private.",
+                    ) from e
+                raise ServiceError(
+                    f"Yandex Music request failed: HTTP {status_code}",
+                    "Could not load the Yandex Music playlist.",
+                ) from e
+            except requests.RequestException as e:
+                raise ServiceError(
+                    f"Yandex Music network error: {e}",
+                    "Network error while loading the Yandex Music playlist.",
+                ) from e
+
+        if last_captcha_error:
+            raise last_captcha_error
+
+        raise ServiceError(
+            "Failed to load Yandex Music shared playlist page",
+            "Could not load the shared Yandex Music playlist page.",
+        )
+
+    def _request_headers(
+        self,
+        ref: YandexPlaylistReference,
+        accept_json: bool = True,
+    ) -> Dict[str, str]:
+        if accept_json:
+            referer = self._canonical_playlist_url(ref)
+            return {
+                "Accept": "application/json, text/javascript, */*; q=0.01",
+                "Referer": referer,
+                "User-Agent": (
+                    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+                    "AppleWebKit/537.36 (KHTML, like Gecko) "
+                    "Chrome/120.0 Safari/537.36"
+                ),
+                "X-Requested-With": "XMLHttpRequest",
+                "X-Retpath-Y": referer,
+            }
+
         return {
-            "Accept": "application/json, text/javascript, */*; q=0.01",
-            "Referer": ref.original_url,
-            "User-Agent": (
-                "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
-                "AppleWebKit/537.36 (KHTML, like Gecko) "
-                "Chrome/120.0 Safari/537.36"
-            ),
-            "X-Requested-With": "XMLHttpRequest",
-            "X-Retpath-Y": ref.original_url,
+            "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+            "User-Agent": "Mozilla/5.0",
         }
+
+    def _canonical_playlist_url(self, ref: YandexPlaylistReference) -> str:
+        if ref.owner and ref.kind:
+            return f"https://{ref.host}/users/{ref.owner}/playlists/{ref.kind}"
+        return ref.original_url
 
     @staticmethod
     def _language_from_host(host: str) -> str:
@@ -298,15 +492,24 @@ class YandexMusicService(IStreamingService):
             return []
 
         endpoint = f"https://{ref.host}/handlers/track-entries.jsx"
-        params = {
-            "entries": ",".join(track_ids),
-            "lang": self._language_from_host(ref.host),
-            "external-domain": ref.host,
-            "overembed": "false",
-            "strict": "true",
-        }
+        tracks: List[Dict[str, Any]] = []
 
-        data = self._get_json(endpoint, params=params, ref=ref)
+        for batch_start in range(0, len(track_ids), self.TRACK_ENTRIES_BATCH_SIZE):
+            batch = track_ids[batch_start:batch_start + self.TRACK_ENTRIES_BATCH_SIZE]
+            params = {
+                "entries": ",".join(batch),
+                "lang": self._language_from_host(ref.host),
+                "external-domain": ref.host,
+                "overembed": "false",
+                "strict": "true",
+            }
+
+            data = self._get_json(endpoint, params=params, ref=ref)
+            tracks.extend(self._normalize_track_entries_response(data))
+
+        return tracks
+
+    def _normalize_track_entries_response(self, data: Any) -> List[Dict[str, Any]]:
         if isinstance(data, list):
             return self._normalize_track_items(data)
 

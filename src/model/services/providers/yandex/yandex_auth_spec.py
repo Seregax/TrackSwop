@@ -10,10 +10,12 @@ class YandexAuthSpec(BaseSpecification):
         return [
             Field(
                 name="playlist_url",
-                label="Yandex Music playlist link",
+                label="Yandex Music link or embed HTML",
                 field_type=FieldType.STRING,
                 required=True,
                 placeholder="https://music.yandex.ru/users/<user>/playlists/<id>",
-                help_text="Paste a public Yandex Music playlist share link.",
+                help_text=(
+                    "Paste a public Yandex Music playlist link or the iframe HTML from the Share dialog."
+                ),
             ),
         ]
