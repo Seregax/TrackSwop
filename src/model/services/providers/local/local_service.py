@@ -76,6 +76,7 @@ class LocalService(IStreamingService):
             - Subdirectory playlists (one level deep)
         """
         if not self.directory:
+            logger.error("Not authenticated. Call authenticate() first.")
             raise Exception("Not authenticated. Call authenticate() first.")
         
         playlists: List[Playlist] = []
@@ -104,6 +105,7 @@ class LocalService(IStreamingService):
             List of tracks
         """
         if not self.directory:
+            logger.error("Not authenticated. Call authenticate() first.")
             raise Exception("Not authenticated. Call authenticate() first.")
         
         # Root playlist

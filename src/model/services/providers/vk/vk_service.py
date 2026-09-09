@@ -17,6 +17,9 @@ from .vk_auth_spec import VkAuthSpecification
 from .vk_import_spec import VkImportSpecification
 from .vk_export_spec import VkExportSpecification
 
+from src.common.logger import get_logger
+
+logger = get_logger(__name__)
 
 class VkService(IStreamingService):
     """
@@ -72,6 +75,7 @@ class VkService(IStreamingService):
             if not response:
                 raise ValueError("Invalid token or user_id")
         except Exception as e:
+            logger.error(f"VKontakte authorization error: {str(e)}")
             raise RuntimeError(f"VKontakte authorization error: {str(e)}")
 
     def get_playlists(self) -> List[Playlist]:
@@ -94,6 +98,7 @@ class VkService(IStreamingService):
             
             return playlists
         except Exception as e:
+            logger.error(f"Error getting playlists: {str(e)}")
             raise RuntimeError(f"Error getting playlists: {str(e)}")
     
     def _save_playlist_metadata(self, vk_playlists: List[Dict[str, Any]]):
@@ -152,6 +157,7 @@ class VkService(IStreamingService):
                     return tracks
 
             except Exception as e:
+                logger.exception("Ignored exception occurred")
                 # Fallback to search
                 pass
 
@@ -163,6 +169,8 @@ class VkService(IStreamingService):
             return tracks
 
         except Exception as e:
+
+            logger.exception(f"Cannot get tracks: {str(e)}") from e
             raise RuntimeError(f"Cannot get tracks: {str(e)}") from e
 
     def add_playlist(self, playlist: Playlist) -> None:
@@ -189,6 +197,8 @@ class VkService(IStreamingService):
                 "owner_id": self.user_id,
             }
         except Exception as e:
+
+            logger.exception(f"Error creating playlist: {str(e)}")
             raise RuntimeError(f"Error creating playlist: {str(e)}")
 
     def add_track_to_playlist(self, playlist: Playlist, track: Track) -> None:
@@ -221,7 +231,7 @@ class VkService(IStreamingService):
                     "vk_audio_id": vk_audio_id,
                     "owner_id": track_owner_id,
                 }
-                print(f"🔍 Found track via search: {vk_audio_id}")
+                logger.info(f"🔍 Found track via search: {vk_audio_id}")
             else:
                 raise ValueError(f"Track '{track.title}' not found in VK")
 
@@ -239,6 +249,8 @@ class VkService(IStreamingService):
                 owner_id=int(track_owner_id)
             )
         except Exception as e:
+
+            logger.exception(f"Error adding track: {str(e)}") from e
             raise RuntimeError(f"Error adding track: {str(e)}") from e
 
     def export_playlist(self, source: Playlist, destination: Playlist) -> None:
@@ -262,13 +274,13 @@ class VkService(IStreamingService):
                 success_count += 1
             except Exception as e:
                 fail_count += 1
-                print(f"Failed to add track '{track.title}': {e}")
+                logger.info(f"Failed to add track '{track.title}': {e}")
             
             # Rate limiting: VK ~3 requests/sec
             if i < len(tracks) - 1:
                 time.sleep(0.4)
         
-        print(f"Export completed: {success_count} successful, {fail_count} errors")
+        logger.info(f"Export completed: {success_count} successful, {fail_count} errors")
 
     # Specification Methods
 
@@ -346,8 +358,8 @@ class VkService(IStreamingService):
                 import datetime
                 dt = datetime.datetime.fromtimestamp(int(vk_track["date"]))
                 year = dt.year
-            except (ValueError, OSError):
-                pass
+            except (ValueError, OSError) as e:
+                logger.exception("Ignored ValueError or OSError")
 
         track = Track(
             title=vk_track.get("title", "Unknown"),
