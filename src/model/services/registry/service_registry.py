@@ -54,7 +54,13 @@ class ServiceRegistry:
             from src.model.services.providers.local.factory import LocalServiceFactory
             self._factories["local"] = LocalServiceFactory
         except ImportError as e:
-            logger.warning(f"Could not register Local factory: {e}")
+            print(f"Warning: Could not register Local factory: {e}")
+        try:
+            from src.model.services.providers.yandex.factory import YandexMusicServiceFactory
+            self._factories["yandex"] = YandexMusicServiceFactory
+        except ImportError as e:
+            print(f"Warning: Could not register Yandex Music factory: {e}")
+
     
     def register_factory(self, service_name: str, factory_class: Type):
         """
@@ -127,6 +133,12 @@ class ServiceRegistry:
         elif service_name == "local":
             if auth_data and "directory" in auth_data:
                 return factory_class.create(directory=auth_data.get("directory"))
+            return factory_class.create()
+
+        # For Yandex Music factory
+        elif service_name == "yandex":
+            if auth_data and "playlist_url" in auth_data:
+                return factory_class.create(playlist_url=auth_data.get("playlist_url"))
             return factory_class.create()
         
         # Generic fallback
